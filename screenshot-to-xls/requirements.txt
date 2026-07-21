@@ -2,3 +2,4 @@ pillow
 pytesseract
 openpyxl
 watchdog
+pywin32

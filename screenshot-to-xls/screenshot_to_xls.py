@@ -3,6 +3,7 @@ screenshot_to_xls.py
 --------------------
 Monitors clipboard (PrtScn) and Screenshots folder (Win+PrtScn).
 Extracts text via OCR and saves everything to an Excel file.
+Also captures open Notepad windows and Windows Sticky Notes on each screenshot.
 
 Usage:
     python screenshot_to_xls.py
@@ -13,10 +14,12 @@ Usage:
 import os
 import sys
 import time
+import sqlite3
 import hashlib
 import argparse
 import threading
 from datetime import datetime
+import re
 
 from PIL import ImageGrab, Image
 import pytesseract
@@ -30,11 +33,9 @@ from watchdog.events import FileSystemEventHandler
 
 DEFAULT_XLS      = r"D:\screenshots_data.xlsx"
 DEFAULT_SHOTS_DIR = os.path.expanduser("~/Pictures/Screenshots")
-TESSERACT_PATH   = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-
-# Set Tesseract path (Windows)
-if os.path.exists(TESSERACT_PATH):
-    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+STICKY_NOTES_DB = os.path.expandvars(
+    r"%LOCALAPPDATA%\Packages\Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe\LocalState\plum.sqlite"
+)
 
 # ─── Excel Setup ─────────────────────────────────────────────────────────────
 
@@ -42,36 +43,57 @@ def init_excel(filepath):
     """Create Excel file with styled headers if it doesn't exist."""
     if not os.path.exists(filepath):
         wb = openpyxl.Workbook()
+
+        # ── Sheet 1: Screenshots ──
         ws = wb.active
         ws.title = "Screenshots"
-
-        headers = ["#", "Timestamp", "Source", "Filename", "Extracted Text"]
+        headers = ["#", "Timestamp", "Source", "Filename", "Extracted Text", "Open Notepads", "Sticky Notes"]
         ws.append(headers)
-
-        # Style header row
-        header_fill = PatternFill("solid", fgColor="1F4E79")
-        header_font = Font(color="FFFFFF", bold=True)
-        for cell in ws[1]:
-            cell.fill   = header_fill
-            cell.font   = header_font
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-
-        # Column widths
+        _style_header(ws, len(headers))
         ws.column_dimensions["A"].width = 6
         ws.column_dimensions["B"].width = 22
         ws.column_dimensions["C"].width = 20
         ws.column_dimensions["D"].width = 30
-        ws.column_dimensions["E"].width = 80
-
+        ws.column_dimensions["E"].width = 60
+        ws.column_dimensions["F"].width = 40
+        ws.column_dimensions["G"].width = 40
         ws.row_dimensions[1].height = 20
+
+        # ── Sheet 2: Sticky Notes ──
+        ws2 = wb.create_sheet("Sticky Notes")
+        ws2.append(["#", "Captured At", "Note ID", "Content"])
+        _style_header(ws2, 4)
+        ws2.column_dimensions["A"].width = 6
+        ws2.column_dimensions["B"].width = 22
+        ws2.column_dimensions["C"].width = 40
+        ws2.column_dimensions["D"].width = 80
+
+        # ── Sheet 3: Notepad ──
+        ws3 = wb.create_sheet("Notepad")
+        ws3.append(["#", "Captured At", "Window Title", "Content"])
+        _style_header(ws3, 4)
+        ws3.column_dimensions["A"].width = 6
+        ws3.column_dimensions["B"].width = 22
+        ws3.column_dimensions["C"].width = 40
+        ws3.column_dimensions["D"].width = 80
+
         wb.save(filepath)
-        print(f"📊 Created Excel file: {filepath}")
+        print(f"Created Excel file: {filepath}")
     else:
-        ws = load_workbook(filepath).active
-        existing_rows = ws.max_row - 1  # exclude header
-        print(f"📊 Appending to existing file: {filepath} ({existing_rows} existing entries)")
+        _wb = load_workbook(filepath)
+        existing_rows = _wb["Screenshots"].max_row - 1
+        print(f"Appending to existing file: {filepath} ({existing_rows} existing entries)")
 
     return load_workbook(filepath)
+
+
+def _style_header(ws, num_cols):
+    fill = PatternFill("solid", fgColor="1F4E79")
+    font = Font(color="FFFFFF", bold=True)
+    for cell in ws[1][:num_cols]:
+        cell.fill      = fill
+        cell.font      = font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
 
 
 # ─── Excel Write (thread-safe) ────────────────────────────────────────────────
@@ -79,25 +101,121 @@ def init_excel(filepath):
 _excel_lock = threading.Lock()
 
 def save_to_excel(wb, filepath, source, filename, text):
-    """Append a new row to the Excel sheet."""
+    """Append a new row with OCR text + live Notepad + Sticky Notes snapshot."""
+    notepads = get_notepad_contents()
+    stickies = get_sticky_notes()
+    ts       = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    notepad_summary = " | ".join(
+        f"[{t}]: {c[:60]}..." if len(c) > 60 else f"[{t}]: {c}"
+        for t, c in notepads
+    ) or "—"
+
+    sticky_summary = " | ".join(
+        s[:80] + "..." if len(s) > 80 else s
+        for s in stickies
+    ) or "—"
+
     with _excel_lock:
-        ws   = wb.active
-        row  = ws.max_row + 1
-        ts   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        ws.append([row - 1, ts, source, filename, text])
-
-        # Wrap text in the extracted text column
-        ws.cell(row=row, column=5).alignment = Alignment(wrap_text=True)
-
-        # Zebra striping
+        # ── Sheet 1: Screenshots ──
+        ws  = wb["Screenshots"]
+        row = ws.max_row + 1
+        ws.append([row - 1, ts, source, filename, text, notepad_summary, sticky_summary])
+        for col in [5, 6, 7]:
+            ws.cell(row=row, column=col).alignment = Alignment(wrap_text=True)
         if row % 2 == 0:
             fill = PatternFill("solid", fgColor="DEEAF1")
-            for col in range(1, 6):
+            for col in range(1, 8):
                 ws.cell(row=row, column=col).fill = fill
 
+        # ── Sheet 2: Sticky Notes (each note as a row) ──
+        ws2 = wb["Sticky Notes"]
+        for note_id, content in enumerate(stickies, ws2.max_row):
+            ws2.append([note_id, ts, f"note_{note_id}", content])
+            ws2.cell(row=ws2.max_row, column=4).alignment = Alignment(wrap_text=True)
+
+        # ── Sheet 3: Notepad (each window as a row) ──
+        ws3 = wb["Notepad"]
+        for title, content in notepads:
+            r = ws3.max_row + 1
+            ws3.append([r - 1, ts, title, content])
+            ws3.cell(row=r, column=4).alignment = Alignment(wrap_text=True)
+
         wb.save(filepath)
-        print(f"✅ [{ts}] Saved → {source} | {filename} | {len(text)} chars")
+        print(f"[{ts}] Saved -> {source} | {filename} | OCR:{len(text)}ch | "
+              f"Notepads:{len(notepads)} | Stickies:{len(stickies)}")
+
+
+
+# ─── Notepad Reader ───────────────────────────────────────────────────────────
+
+def get_notepad_contents():
+    """Return list of (window_title, text_content) for all open Notepad windows."""
+    results = []
+    try:
+        import win32gui
+        import win32con
+
+        def enum_callback(hwnd, _):
+            if not win32gui.IsWindowVisible(hwnd):
+                return
+            title = win32gui.GetWindowText(hwnd)
+            # Match Notepad, Notepad++, and plain .txt windows
+            if "Notepad" in title or title.endswith(".txt"):
+                # Get the Edit child control
+                edit_hwnd = win32gui.FindWindowEx(hwnd, 0, "Edit", None)
+                if not edit_hwnd:
+                    edit_hwnd = win32gui.FindWindowEx(hwnd, 0, "RichEditD2DPT", None)
+                if edit_hwnd:
+                    length   = win32gui.SendMessage(edit_hwnd, win32con.WM_GETTEXTLENGTH, 0, 0)
+                    if length > 0:
+                        import ctypes
+                        buf = ctypes.create_unicode_buffer(length + 1)
+                        ctypes.windll.user32.SendMessageW(edit_hwnd, win32con.WM_GETTEXT, length + 1, buf)
+                        results.append((title, buf.value.strip()))
+
+        win32gui.EnumWindows(enum_callback, None)
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Notepad read error: {e}")
+    return results
+
+
+# ─── Sticky Notes Reader ──────────────────────────────────────────────────────
+
+def get_sticky_notes():
+    """Read all notes from Windows Sticky Notes SQLite database."""
+    notes = []
+    if not os.path.exists(STICKY_NOTES_DB):
+        return notes
+    try:
+        # Copy DB to temp (it may be locked)
+        import shutil, tempfile
+        tmp = os.path.join(tempfile.gettempdir(), "plum_copy.sqlite")
+        shutil.copy2(STICKY_NOTES_DB, tmp)
+
+        conn = sqlite3.connect(tmp)
+        cur  = conn.cursor()
+        # Try both schema versions
+        try:
+            cur.execute("SELECT Text FROM Note WHERE IsDeleted = 0")
+        except sqlite3.OperationalError:
+            cur.execute("SELECT Text FROM Note")
+        rows = cur.fetchall()
+        conn.close()
+        os.remove(tmp)
+
+        for (raw,) in rows:
+            if raw:
+                # Strip RTF-like markup tags (\\id0... \\bold etc.)
+                clean = re.sub(r'\\\w+\d*', ' ', raw)
+                clean = re.sub(r'\s+', ' ', clean).strip()
+                if clean:
+                    notes.append(clean)
+    except Exception as e:
+        print(f"Sticky Notes read error: {e}")
+    return notes
 
 
 # ─── OCR ─────────────────────────────────────────────────────────────────────
