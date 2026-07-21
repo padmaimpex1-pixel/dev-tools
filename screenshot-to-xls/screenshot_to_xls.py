@@ -3,7 +3,9 @@ screenshot_to_xls.py
 --------------------
 Monitors clipboard (PrtScn) and Screenshots folder (Win+PrtScn).
 Extracts text via OCR and saves everything to an Excel file.
-Also captures open Notepad windows and Windows Sticky Notes on each screenshot.
+Also captures open Notepad windows, Windows Sticky Notes, and
+AI tool outputs (Claude, Perplexity, Copilot, ChatGPT, Gemini, etc.)
+whenever text is copied from their browser windows.
 
 Usage:
     python screenshot_to_xls.py
@@ -31,11 +33,37 @@ from watchdog.events import FileSystemEventHandler
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
-DEFAULT_XLS      = r"D:\screenshots_data.xlsx"
+DEFAULT_XLS       = r"D:\screenshots_data.xlsx"
 DEFAULT_SHOTS_DIR = os.path.expanduser("~/Pictures/Screenshots")
-STICKY_NOTES_DB = os.path.expandvars(
+STICKY_NOTES_DB   = os.path.expandvars(
     r"%LOCALAPPDATA%\Packages\Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe\LocalState\plum.sqlite"
 )
+TESSERACT_PATH    = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+if os.path.exists(TESSERACT_PATH):
+    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+
+# Known AI tools — matched against the active window title
+AI_TOOLS = {
+    "claude.ai":             "Claude (Anthropic)",
+    "Claude":                "Claude (Anthropic)",
+    "perplexity.ai":         "Perplexity AI",
+    "Perplexity":            "Perplexity AI",
+    "Copilot":               "GitHub Copilot",
+    "copilot.microsoft.com": "GitHub Copilot",
+    "ChatGPT":               "ChatGPT (OpenAI)",
+    "chatgpt.com":           "ChatGPT (OpenAI)",
+    "chat.openai.com":       "ChatGPT (OpenAI)",
+    "Gemini":                "Google Gemini",
+    "gemini.google.com":     "Google Gemini",
+    "Grok":                  "Grok (xAI)",
+    "grok.com":              "Grok (xAI)",
+    "DeepSeek":              "DeepSeek",
+    "deepseek.com":          "DeepSeek",
+    "Mistral":               "Mistral AI",
+    "mistral.ai":            "Mistral AI",
+    "Ollama":                "Ollama (Local)",
+}
 
 # ─── Excel Setup ─────────────────────────────────────────────────────────────
 
@@ -76,6 +104,16 @@ def init_excel(filepath):
         ws3.column_dimensions["B"].width = 22
         ws3.column_dimensions["C"].width = 40
         ws3.column_dimensions["D"].width = 80
+
+        # ── Sheet 4: AI Outputs ──
+        ws4 = wb.create_sheet("AI Outputs")
+        ws4.append(["#", "Timestamp", "AI Tool", "Window Title", "Copied Text"])
+        _style_header(ws4, 5)
+        ws4.column_dimensions["A"].width = 6
+        ws4.column_dimensions["B"].width = 22
+        ws4.column_dimensions["C"].width = 25
+        ws4.column_dimensions["D"].width = 40
+        ws4.column_dimensions["E"].width = 100
 
         wb.save(filepath)
         print(f"Created Excel file: {filepath}")
@@ -218,7 +256,99 @@ def get_sticky_notes():
     return notes
 
 
-# ─── OCR ─────────────────────────────────────────────────────────────────────
+# ─── AI Tool Output Monitor ───────────────────────────────────────────────────
+
+def get_active_window_title():
+    """Return the title of the currently focused window."""
+    try:
+        import win32gui
+        hwnd = win32gui.GetForegroundWindow()
+        return win32gui.GetWindowText(hwnd)
+    except Exception:
+        return ""
+
+def detect_ai_tool(window_title):
+    """Return AI tool name if the window title matches a known AI tool, else None."""
+    for keyword, tool_name in AI_TOOLS.items():
+        if keyword.lower() in window_title.lower():
+            return tool_name
+    return None
+
+def save_ai_output(wb, filepath, tool, window_title, text):
+    """Save a copied AI output to the AI Outputs sheet."""
+    with _excel_lock:
+        # Ensure sheet exists (for pre-existing Excel files)
+        if "AI Outputs" not in wb.sheetnames:
+            ws4 = wb.create_sheet("AI Outputs")
+            ws4.append(["#", "Timestamp", "AI Tool", "Window Title", "Copied Text"])
+            _style_header(ws4, 5)
+            ws4.column_dimensions["A"].width = 6
+            ws4.column_dimensions["B"].width = 22
+            ws4.column_dimensions["C"].width = 25
+            ws4.column_dimensions["D"].width = 40
+            ws4.column_dimensions["E"].width = 100
+
+        ws   = wb["AI Outputs"]
+        row  = ws.max_row + 1
+        ts   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ws.append([row - 1, ts, tool, window_title[:60], text])
+        ws.cell(row=row, column=5).alignment = Alignment(wrap_text=True)
+
+        # Color-code by AI tool
+        tool_colors = {
+            "Claude (Anthropic)":  "F4A460",  # sandy brown
+            "Perplexity AI":       "6A5ACD",  # slate blue
+            "GitHub Copilot":      "2EA043",  # github green
+            "ChatGPT (OpenAI)":    "10A37F",  # openai teal
+            "Google Gemini":       "4285F4",  # google blue
+            "Grok (xAI)":          "1DA1F2",  # twitter blue
+            "DeepSeek":            "E74C3C",  # red
+            "Mistral AI":          "E67E22",  # orange
+            "Ollama (Local)":      "95A5A6",  # grey
+        }
+        color = tool_colors.get(tool, "FFFACD")
+        fill  = PatternFill("solid", fgColor=color)
+        for col in range(1, 6):
+            ws.cell(row=row, column=col).fill = fill
+
+        wb.save(filepath)
+        print(f"[{ts}] AI Output saved -> {tool} | {len(text)} chars")
+
+
+def monitor_ai_clipboard(wb, filepath):
+    """
+    Watch clipboard for text changes while an AI tool window is focused.
+    Triggers on Ctrl+C (text copy) from any known AI tool browser tab.
+    """
+    last_text_hash = None
+    last_window    = ""
+    print("Watching clipboard for AI tool outputs (Ctrl+C while in Claude/Perplexity/Copilot etc.)...")
+
+    while True:
+        try:
+            import win32clipboard
+            win32clipboard.OpenClipboard()
+            try:
+                text = win32clipboard.GetClipboardData(win32clipboard.CF_UNICODETEXT)
+            except Exception:
+                text = None
+            finally:
+                win32clipboard.CloseClipboard()
+
+            if text and isinstance(text, str) and len(text.strip()) > 20:
+                text_hash = hashlib.md5(text.encode("utf-8", errors="ignore")).hexdigest()
+                if text_hash != last_text_hash:
+                    last_text_hash = text_hash
+                    window_title   = get_active_window_title()
+                    tool           = detect_ai_tool(window_title)
+                    if tool:
+                        save_ai_output(wb, filepath, tool, window_title, text.strip())
+                    last_window = window_title
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+
 
 def run_ocr(img):
     """Extract text from a PIL Image."""
@@ -307,25 +437,36 @@ def main():
     )
     clip_thread.start()
 
+    # Start AI clipboard monitor thread
+    ai_thread = threading.Thread(
+        target=monitor_ai_clipboard,
+        args=(wb, args.output),
+        daemon=True
+    )
+    ai_thread.start()
+
     # Start folder watcher
     if os.path.exists(args.folder):
         handler  = ScreenshotHandler(wb, args.output)
         observer = Observer()
         observer.schedule(handler, args.folder, recursive=False)
         observer.start()
-        print(f"📁 Watching folder: {args.folder}")
+        print(f"Watching folder: {args.folder}")
     else:
-        print(f"⚠️  Screenshots folder not found: {args.folder}")
-        print("    Only clipboard monitoring is active.")
+        print(f"Screenshots folder not found: {args.folder} - Only clipboard monitoring active.")
 
-    print(f"📊 Saving to: {os.path.abspath(args.output)}")
-    print("\nPress PrtScn or Win+PrtScn to capture. Press Ctrl+C to stop.\n")
+    print(f"Saving to: {os.path.abspath(args.output)}")
+    print("\nCapture methods:")
+    print("  PrtScn          -> screenshot OCR + Notepad + Sticky Notes")
+    print("  Win+PrtScn      -> same, from Screenshots folder")
+    print("  Ctrl+C in AI    -> saves AI output (Claude/Perplexity/Copilot/ChatGPT etc.)")
+    print("\nPress Ctrl+C here to stop.\n")
 
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\n🛑 Stopped.")
+        print("\nStopped.")
         if observer:
             observer.stop()
             observer.join()
