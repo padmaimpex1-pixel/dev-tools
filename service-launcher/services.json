@@ -1,0 +1,94 @@
+{
+  "services": [
+    {
+      "name": "WATI Webhook Server",
+      "port": 3000,
+      "type": "node",
+      "cwd": "D:\\GitRepos\\whatsapp-api-integrations\\wati-whatsapp",
+      "cmd": "node server.js",
+      "autostart": true,
+      "tags": ["whatsapp", "webhook", "wati"]
+    },
+    {
+      "name": "Meta WhatsApp Webhook Server",
+      "port": 3001,
+      "type": "node",
+      "cwd": "D:\\GitRepos\\whatsapp-api-integrations\\meta-whatsapp",
+      "cmd": "node server.js",
+      "autostart": false,
+      "tags": ["whatsapp", "webhook", "meta"]
+    },
+    {
+      "name": "Twilio WhatsApp Webhook Server",
+      "port": 3002,
+      "type": "node",
+      "cwd": "D:\\GitRepos\\whatsapp-api-integrations\\twilio-whatsapp",
+      "cmd": "node server.js",
+      "autostart": false,
+      "tags": ["whatsapp", "webhook", "twilio"]
+    },
+    {
+      "name": "ngrok Tunnel (port 3000)",
+      "port": 4040,
+      "type": "exe",
+      "cwd": "C:\\Users\\dell\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Ngrok.Ngrok_Microsoft.Winget.Source_8wekyb3d8bbwe",
+      "cmd": "ngrok.exe http 3000",
+      "autostart": true,
+      "tags": ["tunnel", "ngrok", "public"]
+    },
+    {
+      "name": "Screenshot to XLS Monitor",
+      "port": null,
+      "type": "python",
+      "cwd": "D:\\GitRepos\\Forensics-Security\\Brihaspati---A-Cyber-Forensic-Tool\\screenshot-to-xls",
+      "cmd": "python screenshot_to_xls.py",
+      "autostart": true,
+      "tags": ["utility", "screenshot", "ocr", "xls"]
+    },
+    {
+      "name": "Ollama AI Server",
+      "port": 11434,
+      "type": "exe",
+      "cwd": "C:\\Users\\dell\\AppData\\Local\\Programs\\Ollama",
+      "cmd": "ollama.exe serve",
+      "autostart": true,
+      "tags": ["ai", "llm", "ollama"]
+    },
+    {
+      "name": "ActivityWatch Server",
+      "port": 5600,
+      "type": "exe",
+      "cwd": "C:\\Users\\dell\\AppData\\Local\\Programs\\ActivityWatch",
+      "cmd": "aw-server.exe",
+      "autostart": false,
+      "tags": ["productivity", "tracker", "activitywatch"]
+    },
+    {
+      "name": "AnyDesk Remote Desktop",
+      "port": 7070,
+      "type": "exe",
+      "cwd": "C:\\Program Files (x86)\\AnyDesk",
+      "cmd": "AnyDesk.exe",
+      "autostart": false,
+      "tags": ["remote", "desktop", "anydesk"]
+    },
+    {
+      "name": "ADB Android Debug Bridge",
+      "port": 5037,
+      "type": "exe",
+      "cwd": "C:\\",
+      "cmd": "adb start-server",
+      "autostart": false,
+      "tags": ["android", "adb", "debug"]
+    },
+    {
+      "name": "emSigner",
+      "port": 2015,
+      "type": "exe",
+      "cwd": "C:\\emSigner\\emSigner",
+      "cmd": "jre\\bin\\javaw.exe -jar emSigner.jar",
+      "autostart": false,
+      "tags": ["signing", "dsc", "emsigner"]
+    }
+  ]
+}
