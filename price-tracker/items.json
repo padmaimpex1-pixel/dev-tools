@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Devil May Cry Pen",
+    "keywords": "devil may cry pen",
+    "sites": ["amazon", "flipkart", "snapdeal", "meesho"],
+    "target_price": 500,
+    "alert": true
+  },
+  {
+    "name": "Parker Pen",
+    "keywords": "parker jotter ball pen",
+    "sites": ["amazon", "flipkart"],
+    "target_price": 300,
+    "alert": true
+  }
+]

@@ -37,7 +37,14 @@
       "tags": ["tunnel", "ngrok", "public"]
     },
     {
-      "name": "Deadline Reminder Daemon",
+      "name": "Price Tracker",
+      "port": null,
+      "type": "python",
+      "cwd": "D:\\GitRepos\\dev-tools\\price-tracker",
+      "cmd": "python price_tracker.py",
+      "autostart": true,
+      "tags": ["price", "tracker", "amazon", "flipkart", "ecommerce"]
+    },
       "port": null,
       "type": "python",
       "cwd": "D:\\GitRepos\\dev-tools\\deadline-reminder",
