@@ -201,30 +201,129 @@ def scrape_meesho(keyword):
 
 
 def scrape_blinkit(keyword):
-    """Blinkit requires JS — returns search URL for manual check."""
+    """Blinkit is JS-rendered — log search URL for reference."""
+    query = keyword.replace(" ", "%20")
+    url   = f"https://blinkit.com/s/?q={query}"
+    return [{"name": f"Blinkit search: {keyword}", "price": None,
+             "url": url, "site": "Blinkit", "note": "Open URL to view live prices"}]
+
+
+def scrape_zomato(keyword):
+    """Zomato Hyperpure/grocery — JS-rendered, log search URL."""
+    query = keyword.replace(" ", "%20")
+    url   = f"https://www.zomato.com/search?q={query}"
+    return [{"name": f"Zomato search: {keyword}", "price": None,
+             "url": url, "site": "Zomato", "note": "Open URL to view live prices"}]
+
+
+def scrape_dmart(keyword):
+    """DMart Ready online store."""
     results = []
     try:
-        query = keyword.replace(" ", "%20")
-        url   = f"https://blinkit.com/s/?q={query}"
-        # Blinkit is React-rendered; note the URL for reference
-        results.append({
-            "name":  f"Search '{keyword}' on Blinkit",
-            "price": None,
-            "url":   url,
-            "site":  "Blinkit",
-            "note":  "JS-rendered — open URL manually"
-        })
+        query = keyword.replace(" ", "+")
+        url   = f"https://www.dmart.in/search?text={query}"
+        resp  = requests.get(url, headers=get_headers(), timeout=15)
+        soup  = BeautifulSoup(resp.text, "html.parser")
+
+        for item in soup.select(".product-card, [class*='product']")[:5]:
+            try:
+                name_el  = item.select_one("[class*='name'], [class*='title'], h3, h4")
+                price_el = item.select_one("[class*='price'], [class*='amount']")
+                link_el  = item.select_one("a")
+
+                name  = name_el.text.strip()  if name_el  else None
+                price = clean_price(price_el.text) if price_el else None
+                link  = "https://www.dmart.in" + link_el["href"] if link_el and link_el.get("href","").startswith("/") else url
+
+                if name and price:
+                    results.append({"name": name[:80], "price": price,
+                                    "url": link, "site": "DMart"})
+            except Exception:
+                continue
+
+        if not results:
+            results.append({"name": f"DMart search: {keyword}", "price": None,
+                            "url": url, "site": "DMart", "note": "JS-rendered — open URL"})
     except Exception as e:
-        print(f"  [Blinkit] Error: {e}")
+        print(f"  [DMart] Error: {e}")
+    return results
+
+
+def scrape_tata1mg(keyword):
+    """Tata 1mg — medicines, health supplements."""
+    results = []
+    try:
+        query = keyword.replace(" ", "+")
+        url   = f"https://www.1mg.com/search/all?name={query}"
+        resp  = requests.get(url, headers=get_headers(), timeout=15)
+        soup  = BeautifulSoup(resp.text, "html.parser")
+
+        for item in soup.select("[class*='style__product-box'], [class*='ProductCard']")[:5]:
+            try:
+                name_el  = item.select_one("[class*='name'], [class*='title']")
+                price_el = item.select_one("[class*='price'], [class*='Price']")
+                link_el  = item.select_one("a")
+
+                name  = name_el.text.strip()  if name_el  else None
+                price = clean_price(price_el.text) if price_el else None
+                link  = "https://www.1mg.com" + link_el["href"] if link_el and link_el.get("href","").startswith("/") else url
+
+                if name and price:
+                    results.append({"name": name[:80], "price": price,
+                                    "url": link, "site": "Tata 1mg"})
+            except Exception:
+                continue
+
+        if not results:
+            results.append({"name": f"1mg search: {keyword}", "price": None,
+                            "url": url, "site": "Tata 1mg", "note": "Open URL to view"})
+    except Exception as e:
+        print(f"  [Tata 1mg] Error: {e}")
+    return results
+
+
+def scrape_janaushadhi(keyword):
+    """Jan Aushadhi — generic medicines portal."""
+    results = []
+    try:
+        query = keyword.replace(" ", "+")
+        url   = f"https://janaushadhi.gov.in/ProductList.aspx?id={query}"
+        resp  = requests.get(url, headers=get_headers(), timeout=15)
+        soup  = BeautifulSoup(resp.text, "html.parser")
+
+        for row in soup.select("table tr")[1:6]:
+            try:
+                cols  = row.find_all("td")
+                if len(cols) >= 3:
+                    name  = cols[1].text.strip() if cols[1] else None
+                    price = clean_price(cols[2].text)
+                    if name and price:
+                        results.append({"name": name[:80], "price": price,
+                                        "url": url, "site": "Jan Aushadhi"})
+            except Exception:
+                continue
+
+        if not results:
+            # Try search URL
+            url2 = f"https://janaushadhi.gov.in/ProductList.aspx"
+            results.append({"name": f"Jan Aushadhi: {keyword}", "price": None,
+                            "url": url2, "site": "Jan Aushadhi",
+                            "note": "Search manually at janaushadhi.gov.in"})
+    except Exception as e:
+        print(f"  [Jan Aushadhi] Error: {e}")
     return results
 
 
 SCRAPERS = {
-    "amazon":   scrape_amazon,
-    "flipkart": scrape_flipkart,
-    "snapdeal": scrape_snapdeal,
-    "meesho":   scrape_meesho,
-    "blinkit":  scrape_blinkit,
+    "amazon":      scrape_amazon,
+    "flipkart":    scrape_flipkart,
+    "snapdeal":    scrape_snapdeal,
+    "meesho":      scrape_meesho,
+    "blinkit":     scrape_blinkit,
+    "zomato":      scrape_zomato,
+    "dmart":       scrape_dmart,
+    "tata1mg":     scrape_tata1mg,
+    "janaushadhi": scrape_janaushadhi,
 }
 
 

@@ -7,6 +7,55 @@
     "alert": true
   },
   {
+    "name": "Defense Device Devil Will Cry",
+    "keywords": "devil will cry safety defense spray pepper spray self defense",
+    "sites": ["amazon", "flipkart", "snapdeal", "meesho"],
+    "target_price": 400,
+    "alert": true
+  },
+  {
+    "name": "Multivitamins",
+    "keywords": "multivitamin tablets daily health supplement",
+    "sites": ["amazon", "flipkart", "tata1mg", "janaushadhi"],
+    "target_price": 300,
+    "alert": true
+  },
+  {
+    "name": "Grocery Delivery Basket",
+    "keywords": "atta rice dal toor dal 5kg",
+    "sites": ["blinkit", "zomato", "dmart"],
+    "target_price": 500,
+    "alert": true
+  },
+  {
+    "name": "Men's T-Shirt",
+    "keywords": "men round neck cotton t-shirt",
+    "sites": ["amazon", "flipkart", "meesho", "snapdeal"],
+    "target_price": 299,
+    "alert": true
+  },
+  {
+    "name": "Women Kurti",
+    "keywords": "women cotton kurti ethnic wear",
+    "sites": ["amazon", "flipkart", "meesho"],
+    "target_price": 499,
+    "alert": true
+  },
+  {
+    "name": "Blue Pottery Plate",
+    "keywords": "blue pottery jaipur handmade plate decorative",
+    "sites": ["amazon", "flipkart", "snapdeal", "meesho"],
+    "target_price": 600,
+    "alert": true
+  },
+  {
+    "name": "Blue Pottery Vase",
+    "keywords": "blue pottery vase jaipur handcrafted",
+    "sites": ["amazon", "flipkart", "meesho"],
+    "target_price": 800,
+    "alert": true
+  },
+  {
     "name": "Parker Pen",
     "keywords": "parker jotter ball pen",
     "sites": ["amazon", "flipkart"],
