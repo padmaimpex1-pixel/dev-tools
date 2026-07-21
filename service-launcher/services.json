@@ -37,7 +37,28 @@
       "tags": ["tunnel", "ngrok", "public"]
     },
     {
-      "name": "Screenshot to XLS Monitor",
+      "name": "Deadline Reminder Daemon",
+      "port": null,
+      "type": "python",
+      "cwd": "D:\\GitRepos\\dev-tools\\deadline-reminder",
+      "cmd": "python deadline_reminder.py",
+      "autostart": true,
+      "tags": ["reminder", "deadline", "notification"]
+    },
+      "port": null,
+      "type": "python",
+      "cwd": "D:\\GitRepos\\dev-tools\\brand-assets-watcher",
+      "cmd": "python brand_assets_watcher.py",
+      "autostart": true,
+      "tags": ["brand", "assets", "watcher", "files"]
+    },
+      "port": 5555,
+      "type": "python",
+      "cwd": "D:\\GitRepos\\dev-tools\\ai-capture\\server",
+      "cmd": "python receiver.py",
+      "autostart": true,
+      "tags": ["ai", "capture", "claude", "chatgpt", "perplexity", "gemini"]
+    },
       "port": null,
       "type": "python",
       "cwd": "D:\\GitRepos\\Forensics-Security\\Brihaspati---A-Cyber-Forensic-Tool\\screenshot-to-xls",
